@@ -1,0 +1,36 @@
+name: SGS Test - RPG Maker MZ
+on:
+  push:
+    paths:
+      - '.github/workflows/test-rpg-maker.yml'
+permissions:
+  contents: write
+jobs:
+  render-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          pip install -r requirements.txt
+      - name: Render RPG Maker MZ from official screenshots
+        run: python src/create_video.py 1096900 --output-dir output
+      - name: Upload test result
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SGS-RPG-Maker-MZ
+          path: output/
+          retention-days: 14
+      - name: Publish test MP4
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "sgs-rpg-maker-mz-first-test" output/SGS_10sec.mp4 output/source_manifest.json --title "SGS RPG Maker MZ test" --notes "Automatic test from Steam official screenshots. Confirm usage rights before publication."
