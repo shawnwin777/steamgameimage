@@ -20,6 +20,12 @@
 - 讀取 GitHub Actions 執行紀錄：`mcp__GitHub__fetch` 可讀 `https://api.github.com/repos/shawnwin777/steamgameimage/actions/runs`
 - 取得成功影片 Release：`mcp__GitHub__fetch`，讀取 `https://api.github.com/repos/shawnwin777/steamgameimage/releases/tags/sgs-issue-<issue_number>`
 
+## 影片素材優先順序
+- 優先嘗試 Steam appdetails.movies 中的官方 MP4 預告片（不是保證實機遊玩畫面）。需檢查網址來源、成功下載、ffprobe 驗證後才當作動態影片。
+- 若無可用的官方 MP4，回退到至少四張已下載驗證的 Steam 官方截圖。
+- GitHub Release 的 source_manifest.json 有 media_mode、trailer.status、trailer.candidates 供追蹤。不可聲稱截圖輪播是遊戲實機動態錄影。
+- 2026-11-16 Warframe 第二次重測：Steam API 回傳 0 個 MP4 候選，因此產生的是官方截圖輪播的 MP4，而非動態影片剪輯。
+
 ## 影片規格
 - 9:16、720×1280、10秒 MP4
 - 上半部至少四張經過實際下載及解碼驗證的 Steam 官方截圖
