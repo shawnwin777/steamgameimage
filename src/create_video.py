@@ -15,6 +15,46 @@ def textfont(size):
     for path in ["/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc","/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]:
         if Path(path).exists():return ImageFont.truetype(path,size)
     return ImageFont.load_default()
+
+def official_movie(d,out):
+    """Download only an explicitly advertised Steam MP4, with source validation."""
+    candidates=[]
+    for movie in d.get("movies",[]):
+        mp4=movie.get("mp4") or {}
+        for key in ("max","480"):
+            url=mp4.get(key)
+            if isinstance(url,str) and url not in candidates:candidates.append(url)
+    notes={"candidates":len(candidates),"status":"not_available","source_url":None,"error":None}
+    for url in candidates:
+        host=(urlparse(url).hostname or "").lower()
+        if not (host=="steamstatic.com" or host.endswith(".steamstatic.com") or host=="steamcontent.com" or host.endswith(".steamcontent.com")):
+            continue
+        target=out/"official_trailer.mp4"
+        try:
+            with requests.get(url,stream=True,timeout=(15,45),headers={"User-Agent":"Mozilla/5.0"}) as r:
+                r.raise_for_status()
+                finalhost=(urlparse(r.url).hostname or "").lower()
+                if not (finalhost=="steamstatic.com" or finalhost.endswith(".steamstatic.com") or finalhost=="steamcontent.com" or finalhost.endswith(".steamcontent.com")):
+                    raise ValueError("Unexpected trailer redirect: "+finalhost)
+                size=0
+                with target.open("wb") as fh:
+                    for chunk in r.iter_content(1024*1024):
+                        if not chunk:continue
+                        size+=len(chunk)
+                        if size>100_000_000:raise ValueError("Trailer too large")
+                        fh.write(chunk)
+            probe=subprocess.run(["ffprobe","-v","error","-show_entries","stream=codec_type","-show_entries","format=duration","-of","json",str(target)],check=True,capture_output=True,text=True,timeout=30)
+            meta=json.loads(probe.stdout)
+            dur=float(meta.get("format",{}).get("duration",0))
+            if dur<2 or not any(v.get("codec_type")=="video" for v in meta.get("streams",[])):raise ValueError("Invalid trailer video")
+            notes.update({"status":"downloaded","source_url":url,"duration_seconds":dur,"bytes":size})
+            return target,notes
+        except Exception as exc:
+            notes["error"]=str(exc)[:250]
+            target.unlink(missing_ok=True)
+            print("Official trailer download failed:",exc,flush=True)
+    return None,notes
+
 def main():
     p=argparse.ArgumentParser();p.add_argument("app");p.add_argument("--output-dir",default="output");a=p.parse_args()
     ident=appid(a.app)
@@ -22,6 +62,7 @@ def main():
     if not d["success"]:raise RuntimeError("Steam data missing")
     d=d["data"]
     out=Path(a.output_dir);out.mkdir(parents=True,exist_ok=True)
+    trailer,trailer_info=official_movie(d,out)
     shots=[];sources=[]
     for shot in d.get("screenshots",[]):
         u=shot.get("path_full","")
@@ -43,7 +84,7 @@ def main():
     pct=price.get("discount_percent",0)
     discount="無" if free or not pct else "-"+str(pct)+"%"
     end="不適用" if free or not pct else "未提供"
-    info={"name":d["name"],"app_id":ident,"original":original,"current":current,"discount":discount,"end":end,"review":review,"traditional_chinese":"待確認","sources":sources}
+    info={"media_mode":"official_trailer" if trailer else "official_screenshots","trailer":trailer_info,"name":d["name"],"app_id":ident,"original":original,"current":current,"discount":discount,"end":end,"review":review,"traditional_chinese":"待確認","sources":sources}
     # Do not infer Traditional Chinese support without a verified language table.
     try:
         from bs4 import BeautifulSoup
@@ -79,13 +120,25 @@ def main():
     except Exception as exc:print("Voice failed:",exc)
     info["voice_status"]="generated" if voice_ok else "not_available"
     (out/"source_manifest.json").write_text(json.dumps(info,ensure_ascii=False,indent=2))
-    concat=out/"frames.ffconcat"
-    concat.write_text("ffconcat version 1.0\n"+"".join("file '"+str(f.resolve())+"'\nduration 2.5\n" for f in frames)+"file '"+str(frames[-1].resolve())+"'\n")
-    cmd=["ffmpeg","-y","-loglevel","error","-safe","0","-f","concat","-i",str(concat)]
-    if voice_ok:cmd+=["-i",str(mp3)]
-    cmd+=["-vf","fps=30,format=yuv420p","-t","10","-c:v","libx264","-preset","veryfast","-crf","22","-movflags","+faststart"]
-    cmd+=(["-af","apad","-c:a","aac"] if voice_ok else ["-an"])
-    cmd.append(str(out/"SGS_10sec.mp4"))
+    if trailer:
+        # Overlay real moving trailer in the top area of the SGS data frame.
+        cmd=["ffmpeg","-y","-loglevel","error","-stream_loop","-1","-i",str(trailer),
+             "-loop","1","-i",str(frames[0])]
+        if voice_ok:cmd+=["-i",str(mp3)]
+        cmd+=["-filter_complex",
+              "[0:v]scale=720:690:force_original_aspect_ratio=increase,crop=720:690,fps=30,setsar=1[top];"
+              "[1:v]fps=30[base];[base][top]overlay=0:0:shortest=0,format=yuv420p[v]",
+              "-map","[v]"]
+        if voice_ok:cmd+=["-map","2:a:0","-af","apad","-c:a","aac"]
+        else:cmd+=["-an"]
+    else:
+        concat=out/"frames.ffconcat"
+        concat.write_text("ffconcat version 1.0\\n"+"".join("file '"+str(f.resolve())+"'\\nduration 2.5\\n" for f in frames)+"file '"+str(frames[-1].resolve())+"'\\n")
+        cmd=["ffmpeg","-y","-loglevel","error","-safe","0","-f","concat","-i",str(concat)]
+        if voice_ok:cmd+=["-i",str(mp3)]
+        cmd+=["-vf","fps=30,format=yuv420p"]
+        cmd+=(["-af","apad","-c:a","aac"] if voice_ok else ["-an"])
+    cmd+=["-t","10","-c:v","libx264","-preset","veryfast","-crf","22","-movflags","+faststart",str(out/"SGS_10sec.mp4")]
     subprocess.run(cmd,check=True)
     print("Created:",out/"SGS_10sec.mp4")
 if __name__=="__main__":main()
