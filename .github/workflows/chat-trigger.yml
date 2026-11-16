@@ -1,0 +1,44 @@
+name: SGS Video - Chat Trigger
+on:
+  issues:
+    types: [opened]
+permissions:
+  contents: write
+jobs:
+  render:
+    if: github.event.issue.user.login == github.repository_owner && startsWith(github.event.issue.title, 'SGS VIDEO ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          pip install -r requirements.txt
+      - name: Validate Steam App ID and generate MP4
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          python - <<'PY'
+          import os,re
+          match=re.fullmatch(r'SGS VIDEO ([0-9]{3,10})',os.environ['ISSUE_TITLE'])
+          if not match: raise SystemExit("Invalid SGS VIDEO title")
+          with open("app_id.txt","w") as f: f.write(match.group(1))
+          PY
+          python src/create_video.py "$(cat app_id.txt)" --output-dir output
+      - name: Save result
+        uses: actions/upload-artifact@v4
+        with:
+          name: SGS-Issue-${{ github.event.issue.number }}
+          path: output/
+          retention-days: 14
+      - name: Publish MP4
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh release create "sgs-issue-${ISSUE_NUMBER}" output/SGS_10sec.mp4 output/source_manifest.json --title "SGS Auto Video #${ISSUE_NUMBER}" --notes "Automated video; verify game screenshot reuse rights."
