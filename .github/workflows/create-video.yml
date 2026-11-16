@@ -1,0 +1,52 @@
+name: SGS Steam Auto Video
+run-name: SGS ${{ inputs.app_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: Numeric Steam App ID
+        required: true
+        type: string
+      request_id:
+        description: Unique request UUID
+        required: true
+        type: string
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          pip install -r requirements.txt
+      - name: Validate and render
+        env:
+          APP_ID: ${{ inputs.app_id }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          python - <<'PY'
+          import re,os
+          assert re.fullmatch(r'[0-9]{3,10}',os.environ['APP_ID'])
+          assert re.fullmatch(r'[a-f0-9-]{36}',os.environ['REQUEST_ID'])
+          PY
+          python src/create_video.py "$APP_ID" --output-dir output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SGS-${{ inputs.app_id }}
+          path: output/
+          retention-days: 14
+      - name: Publish MP4 result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_ID: ${{ inputs.app_id }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          gh release create "sgs-${APP_ID}-${REQUEST_ID}" output/SGS_10sec.mp4 output/source_manifest.json --title "SGS Steam ${APP_ID}" --notes "Check screenshot reuse rights before commercial publishing."
