@@ -63,6 +63,7 @@ def main():
     d=d["data"]
     out=Path(a.output_dir);out.mkdir(parents=True,exist_ok=True)
     trailer,trailer_info=official_movie(d,out)
+    print("Trailer probe result:",json.dumps(trailer_info,ensure_ascii=False),flush=True)
     shots=[];sources=[]
     for shot in d.get("screenshots",[]):
         u=shot.get("path_full","")
@@ -133,7 +134,7 @@ def main():
         else:cmd+=["-an"]
     else:
         concat=out/"frames.ffconcat"
-        concat.write_text("ffconcat version 1.0\\n"+"".join("file '"+str(f.resolve())+"'\\nduration 2.5\\n" for f in frames)+"file '"+str(frames[-1].resolve())+"'\\n")
+        concat.write_text("ffconcat version 1.0\n"+"".join("file '"+str(f.resolve())+"'\nduration 2.5\n" for f in frames)+"file '"+str(frames[-1].resolve())+"'\n")
         cmd=["ffmpeg","-y","-loglevel","error","-safe","0","-f","concat","-i",str(concat)]
         if voice_ok:cmd+=["-i",str(mp3)]
         cmd+=["-vf","fps=30,format=yuv420p"]
