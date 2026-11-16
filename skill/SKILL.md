@@ -1,40 +1,37 @@
 # SGS Steam Auto Video Skill
 
-## Purpose
-When a user sends a Steam Store app URL, automatically produce a 10-second portrait (9:16) SGS cyberpunk game-introduction MP4 based on real Steam game screenshots and source-verified Steam metadata.
+## 觸發詞
+使用者輸入「SGS製片」或「SGS Skill」並貼上 Steam 商店網址，例如：
+`SGS製片 https://store.steampowered.com/app/230410/Warframe/`
 
-## Trigger
-Recognize `https://store.steampowered.com/app/<APP_ID>/...` and extract the numeric app ID.
+在已連接 GitHub 的 ChatGPT 對話中，主動執行這套流程；不要只說明步驟。
 
-## Execution (requires connected GPT Action)
-1. Call `createSteamVideo` with `app_id`.
-2. Keep its returned `request_id`; do not substitute another or reuse a prior video's result.
-3. Call `checkSteamVideo` with `app_id` and `request_id`.
-4. Only provide the confirmed `mp4_url` when status is `ready`.
-5. If the API is unavailable or a job fails, report the blocker truthfully; do not pretend the MP4 exists.
+## 真正可用的 GitHub 呼叫流程（已驗證）
+1. 從 `store.steampowered.com/app/<APP_ID>/` 擷取純數字 App ID，確認域名與格式。
+2. 透過 GitHub 連接工具，在儲存庫 `shawnwin777/steamgameimage` 建立新 Issue，**標題嚴格等於** `SGS VIDEO <APP_ID>`。body 寫明 Steam 原始網址及當次任務。
+3. GitHub Workflow `.github/workflows/chat-trigger.yml` 收到 Issue `opened` 事件即執行。工作流程限制 Issue 建立者必須是儲存庫擁有者。
+4. 記下剛建立 Issue 的 **issue_number**。檢查該次 GitHub Actions 執行狀態；在完成前，不宣稱已產生影片。
+5. 工作成功後，取得 GitHub Release tag `sgs-issue-<issue_number>`，核對其 assets 確有 `SGS_10sec.mp4`，回覆該筆 MP4 的實際 `browser_download_url`。
+6. 若失敗或 Release 缺檔，報告明確失敗階段與 GitHub Actions URL；不可拿舊影片充作新片。
 
-## Video production requirements
-- 720×1280 or higher, portrait 9:16, exactly 10 seconds, MP4.
-- Upper area: at least 4 **actual verified game screenshots** obtained from Steam; switch images throughout the clip.
-- Lower area: static/animated SGS neon cyberpunk info cards, background #0B1018, cyan #00E5BC, purple #946BFF.
-- Information: title, original price, current price, discount %, sale end date, overall Steam player review summary, Traditional Chinese language support.
-- Free-to-play games: original/current price = 免費遊玩, discount = 無, end date = 不適用.
-- Missing sale deadline or language verification: use 未提供 / 待確認, never invent them.
-- Text and narration in Traditional Chinese, natural Taiwan Mandarin when TTS succeeds. If TTS fails, flag the final as silent and never imply narration exists.
-- Never use AI-generated gameplay visuals, illustrative mockups or source-unverified material as authentic screenshots.
-- Fewer than 4 usable source screenshots: stop generation; report insufficient assets.
-- Source screenshots still require appropriate redistribution rights before commercial publishing.
+### 可直接使用的工具介面
+- `mcp__GitHub__create_issue`：
+  `{repository_full_name:"shawnwin777/steamgameimage",title:"SGS VIDEO 230410",body:"Steam: https://store.steampowered.com/app/230410/Warframe/"}`
+- 讀取 GitHub Actions 執行紀錄：`mcp__GitHub__fetch` 可讀 `https://api.github.com/repos/shawnwin777/steamgameimage/actions/runs`
+- 取得成功影片 Release：`mcp__GitHub__fetch`，讀取 `https://api.github.com/repos/shawnwin777/steamgameimage/releases/tags/sgs-issue-<issue_number>`
 
-## Technical architecture
-- Renderer: `src/create_video.py` (Steam API + screenshot verification + FFmpeg).
-- GitHub workflow: `.github/workflows/create-video.yml`.
-- Gateway: `worker/index.js` and `worker/wrangler.toml`, requires Cloudflare Worker deployment.
-- GPT API spec: `gpt/openapi.yaml` (replace placeholder server URL with real Worker host).
-- GPT instructions: `gpt/instructions.md`.
-- Source code: https://github.com/shawnwin777/steamgameimage
+## 影片規格
+- 9:16、720×1280、10秒 MP4
+- 上半部至少四張經過實際下載及解碼驗證的 Steam 官方截圖
+- 下半部 SGS 賽博龐克 #0B1018 深色底、#00E5BC 霓虹青綠、#946BFF 紫色
+- 遊戲名稱、原價、現價、折扣、截止日期、全語言 Steam 玩家總評、繁體中文狀態
+- 台灣華語 TTS（若語音生成失敗，須註明無聲）
+- 絕不可用 AI 生成假畫面冒充官方遊戲截圖；不可猜測價格、折扣或語言狀態
+- Steam 公開素材不代表擁有商業重製權；公開發布前應確認素材授權
 
-## Validation status (2026-11-16)
-A real GitHub Actions test for Steam App ID 1096900 (RPG Maker MZ) succeeded and published an MP4:
-https://github.com/shawnwin777/steamgameimage/releases/tag/sgs-rpg-maker-mz-first-test
+## 關鍵限制
+此 `SKILL.md` 已存於 GitHub，但**不代表已被安裝成 ChatGPT 帳號內建的全域 Skill**。在本對話的 GitHub 連線有效時，可以直接按此流程呼叫 GitHub 製片。若新對話沒有取得 GitHub 連接或此 Skill 的指示，則不能承諾會自動呼叫。若需跨新對話自動偵測，必須正式配置 GPT Builder Action 或能安裝技能的執行環境。
 
-**Not yet activated inside ChatGPT as a directly callable Skill.** Deploy the gateway, configure its secrets and install the Custom GPT Action. Until then, simply pasting an URL in an ordinary GPT chat will not reliably launch a new GitHub job.
+## 已驗證實例（2026-11-16）
+- RPG Maker MZ (1096900) GitHub Actions 成功：https://github.com/shawnwin777/steamgameimage/releases/tag/sgs-rpg-maker-mz-first-test
+- Warframe (230410) 經 ChatGPT GitHub Issue 啟動成功：https://github.com/shawnwin777/steamgameimage/releases/tag/sgs-issue-1
