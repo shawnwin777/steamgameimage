@@ -1,0 +1,7 @@
+name = "sgs-steam-video"
+main = "index.js"
+compatibility_date = "2026-11-01"
+
+[vars]
+GH_OWNER = "shawnwin777"
+GH_REPO = "steamgameimage"
